@@ -23,7 +23,7 @@ import { signIn } from "./actions/auth"
 export default function Home() {
   const router = useRouter()
   const [loginData, setLoginData] = useState({ email: "", password: "" })
-  const [loginErrors, setLoginErrors] = useState<{ email?: string; password?: string }>({})
+  const [loginErrors, setLoginErrors] = useState<{ email?: string; password?: string; general?: string }>({})
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false)
@@ -41,26 +41,33 @@ export default function Home() {
     setLoginErrors({})
 
     try {
+      // Create FormData object for server action
       const formData = new FormData()
       formData.append("email", loginData.email)
       formData.append("password", loginData.password)
 
+      // Call server action
       const result = await signIn(formData)
 
       if (result.success) {
+        // Store role in localStorage
+        localStorage.setItem("user_role", result.role)
+
+        // Navigate to dashboard with role
         router.push(`/dashboard?role=${result.role}`)
       } else {
-        setLoginErrors({ email: result.error || "Invalid credentials. Please try again." })
+        setLoginErrors({ general: result.error || "Invalid credentials" })
       }
     } catch (error) {
       console.error("Login error:", error)
-      setLoginErrors({ email: "An error occurred. Please try again." })
+      setLoginErrors({ general: "An unexpected error occurred. Please try again." })
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleResetPassword = () => {
+    // In a real app, this would send a password reset email
     setResetSuccess(true)
     setTimeout(() => {
       setIsResetDialogOpen(false)
@@ -88,8 +95,10 @@ export default function Home() {
             <CardTitle className="text-center text-2xl">Welcome Back</CardTitle>
             <CardDescription className="text-center">Enter your credentials to access the EHR system</CardDescription>
           </CardHeader>
-
           <CardContent className="space-y-4">
+            {loginErrors.general && (
+              <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">{loginErrors.general}</div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -103,7 +112,6 @@ export default function Home() {
               />
               {loginErrors.email && <p className="text-sm text-red-500">{loginErrors.email}</p>}
             </div>
-
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
@@ -150,7 +158,6 @@ export default function Home() {
                   </DialogContent>
                 </Dialog>
               </div>
-
               <div className="relative">
                 <Input
                   id="password"
@@ -175,12 +182,10 @@ export default function Home() {
               {loginErrors.password && <p className="text-sm text-red-500">{loginErrors.password}</p>}
             </div>
           </CardContent>
-
           <CardFooter className="flex flex-col">
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Logging in..." : "Log in"}
             </Button>
-
             <p className="mt-4 text-center text-sm text-gray-500">
               For demo purposes, use these emails with any password:
             </p>
