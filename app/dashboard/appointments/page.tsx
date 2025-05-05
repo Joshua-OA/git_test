@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Search, Plus, Filter, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,188 +27,97 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-
-// Sample appointment data
-const appointmentsData = [
-  {
-    id: "1",
-    patientName: "John Doe",
-    patientId: "P-001",
-    date: "2023-06-15",
-    time: "09:00 AM",
-    doctor: "Dr. Sarah Johnson",
-    department: "General Medicine",
-    status: "Scheduled",
-    reason: "Annual checkup",
-    notes: "Patient has history of hypertension",
-    createdAt: new Date(2023, 5, 10, 14, 30).toISOString(),
-    completedAt: null,
-  },
-  {
-    id: "2",
-    patientName: "Emma Wilson",
-    patientId: "P-042",
-    date: "2023-06-15",
-    time: "10:30 AM",
-    doctor: "Dr. Michael Chen",
-    department: "Cardiology",
-    status: "Completed",
-    reason: "Follow-up after surgery",
-    notes: "Patient recovering well from bypass surgery",
-    createdAt: new Date(2023, 5, 12, 9, 15).toISOString(),
-    completedAt: new Date(2023, 5, 15, 11, 0).toISOString(),
-  },
-  {
-    id: "3",
-    patientName: "Robert Brown",
-    patientId: "P-108",
-    date: "2023-06-15",
-    time: "01:15 PM",
-    doctor: "Dr. Lisa Wong",
-    department: "Orthopedics",
-    status: "Cancelled",
-    reason: "Knee pain assessment",
-    notes: "Patient called to reschedule",
-    createdAt: new Date(2023, 5, 13, 16, 45).toISOString(),
-    completedAt: null,
-  },
-  {
-    id: "4",
-    patientName: "Sophia Martinez",
-    patientId: "P-056",
-    date: "2023-06-16",
-    time: "11:00 AM",
-    doctor: "Dr. James Wilson",
-    department: "Neurology",
-    status: "Scheduled",
-    reason: "Headache consultation",
-    notes: "First-time patient",
-    createdAt: new Date(2023, 5, 14, 10, 30).toISOString(),
-    completedAt: null,
-  },
-  {
-    id: "5",
-    patientName: "William Taylor",
-    patientId: "P-023",
-    date: "2023-06-16",
-    time: "02:45 PM",
-    doctor: "Dr. Sarah Johnson",
-    department: "General Medicine",
-    status: "Scheduled",
-    reason: "Flu symptoms",
-    notes: "Patient requested late afternoon appointment",
-    createdAt: new Date(2023, 5, 14, 13, 20).toISOString(),
-    completedAt: null,
-  },
-  {
-    id: "6",
-    patientName: "Olivia Garcia",
-    patientId: "P-077",
-    date: "2023-06-17",
-    time: "09:30 AM",
-    doctor: "Dr. Michael Chen",
-    department: "Cardiology",
-    status: "Scheduled",
-    reason: "Blood pressure check",
-    notes: "Monthly follow-up",
-    createdAt: new Date(2023, 5, 15, 9, 0).toISOString(),
-    completedAt: null,
-  },
-  {
-    id: "7",
-    patientName: "James Johnson",
-    patientId: "P-091",
-    date: "2023-06-17",
-    time: "03:00 PM",
-    doctor: "Dr. Lisa Wong",
-    department: "Orthopedics",
-    status: "Scheduled",
-    reason: "Back pain evaluation",
-    notes: "Patient reports worsening symptoms",
-    createdAt: new Date(2023, 5, 15, 14, 15).toISOString(),
-    completedAt: null,
-  },
-  {
-    id: "8",
-    patientName: "Ava Thompson",
-    patientId: "P-112",
-    date: "2023-06-18",
-    time: "10:00 AM",
-    doctor: "Dr. James Wilson",
-    department: "Neurology",
-    status: "Scheduled",
-    reason: "Seizure follow-up",
-    notes: "Bring previous test results",
-    createdAt: new Date(2023, 5, 16, 11, 45).toISOString(),
-    completedAt: null,
-  },
-]
-
-// Sample doctors data
-const doctorsData = [
-  { id: "1", name: "Dr. Sarah Johnson", department: "General Medicine" },
-  { id: "2", name: "Dr. Michael Chen", department: "Cardiology" },
-  { id: "3", name: "Dr. Lisa Wong", department: "Orthopedics" },
-  { id: "4", name: "Dr. James Wilson", department: "Neurology" },
-  { id: "5", name: "Dr. Emily Davis", department: "Pediatrics" },
-  { id: "6", name: "Dr. Robert Miller", department: "Dermatology" },
-]
-
-// Sample products/services for receipts
-const productsData = [
-  { id: "1", name: "Consultation - General", price: 150.0 },
-  { id: "2", name: "Consultation - Specialist", price: 250.0 },
-  { id: "3", name: "Blood Test - Basic", price: 80.0 },
-  { id: "4", name: "Blood Test - Comprehensive", price: 180.0 },
-  { id: "5", name: "X-Ray", price: 200.0 },
-  { id: "6", name: "Ultrasound", price: 250.0 },
-  { id: "7", name: "ECG", price: 120.0 },
-  { id: "8", name: "Vaccination - Basic", price: 50.0 },
-]
-
-// Clinic information
-const clinicInfo = {
-  name: "Luxe Clinic",
-  location: "123 Healthcare Avenue, Accra, Ghana",
-  phone: "+233 20 1234 5678",
-  email: "info@luxeclinic.com",
-}
+import { CalendarIntegration } from "@/components/calendar-integration"
+import { createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from "@/app/actions/calendar"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { toast } from "@/components/ui/use-toast"
+// Update the imports to include the AppointmentDialog
+import { AppointmentDialog } from "./appointment-dialog"
 
 export default function AppointmentsPage() {
-  const [searchTerm, setSearchTerm] = useState("")
+  // Add the following state variables to the component
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [selectedAppointment, setSelectedAppointment] = useState<any>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [selectedAppointment, setSelectedAppointment] = useState<any>(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isAddNoteDialogOpen, setIsAddNoteDialogOpen] = useState(false)
   const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false)
+  const [isCalendarDialogOpen, setIsCalendarDialogOpen] = useState(false)
   const [receiptFormat, setReceiptFormat] = useState("standard")
   const [activeTab, setActiveTab] = useState("all")
   const [newNote, setNewNote] = useState("")
   const [selectedProducts, setSelectedProducts] = useState<any[]>([])
+  const [appointments, setAppointments] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Filter appointments based on search term and active tab
-  const filteredAppointments = appointmentsData.filter((appointment) => {
-    const matchesSearch =
-      appointment.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.doctor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.reason.toLowerCase().includes(searchTerm.toLowerCase())
+  const supabase = createClientComponentClient()
 
-    if (activeTab === "all") return matchesSearch
-    if (activeTab === "scheduled") return matchesSearch && appointment.status === "Scheduled"
-    if (activeTab === "completed") return matchesSearch && appointment.status === "Completed"
-    if (activeTab === "cancelled") return matchesSearch && appointment.status === "Cancelled"
+  useEffect(() => {
+    fetchAppointments()
+  }, [activeTab])
 
-    return matchesSearch
+  const fetchAppointments = async () => {
+    setLoading(true)
+    try {
+      let query = supabase
+        .from("appointments")
+        .select(`
+          id,
+          date,
+          time,
+          status,
+          reason,
+          notes,
+          calendar_event_id,
+          calendar_event_link,
+          created_at,
+          completed_at,
+          patients (id, first_name, last_name, patient_id),
+          users (id, first_name, last_name),
+          department
+        `)
+        .order("date", { ascending: true })
+        .order("time", { ascending: true })
+
+      // Apply status filter based on active tab
+      if (activeTab !== "all") {
+        query = query.eq("status", activeTab.charAt(0).toUpperCase() + activeTab.slice(1))
+      }
+
+      const { data, error } = await query
+
+      if (error) throw error
+
+      setAppointments(data || [])
+    } catch (err: any) {
+      console.error("Error fetching appointments:", err)
+      setError(err.message || "Failed to load appointments")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Filter appointments based on search term
+  const filteredAppointments = appointments.filter((appointment) => {
+    const patientName = `${appointment.patients?.first_name} ${appointment.patients?.last_name}`.toLowerCase()
+    const doctorName = `${appointment.users?.first_name} ${appointment.users?.last_name}`.toLowerCase()
+
+    return (
+      patientName.includes(searchTerm.toLowerCase()) ||
+      doctorName.includes(searchTerm.toLowerCase()) ||
+      appointment.department?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      appointment.reason?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
   })
 
   // Check if appointment can be edited (not from previous sessions and not completed more than 30 minutes ago)
   const canEditAppointment = (appointment: any) => {
     if (appointment.status === "Cancelled") return false
 
-    if (appointment.completedAt) {
-      const completedTime = new Date(appointment.completedAt)
+    if (appointment.completed_at) {
+      const completedTime = new Date(appointment.completed_at)
       const thirtyMinutesAfterCompletion = new Date(completedTime.getTime() + 30 * 60000)
       return new Date() < thirtyMinutesAfterCompletion
     }
@@ -218,13 +127,14 @@ export default function AppointmentsPage() {
 
   // Check if appointment can only have notes added (completed more than 30 minutes ago)
   const canOnlyAddNotes = (appointment: any) => {
-    if (!appointment.completedAt) return false
+    if (!appointment.completed_at) return false
 
-    const completedTime = new Date(appointment.completedAt)
+    const completedTime = new Date(appointment.completed_at)
     const thirtyMinutesAfterCompletion = new Date(completedTime.getTime() + 30 * 60000)
     return new Date() >= thirtyMinutesAfterCompletion
   }
 
+  // Update the handleEdit function
   const handleEdit = (appointment: any) => {
     setSelectedAppointment(appointment)
     setIsEditDialogOpen(true)
@@ -246,12 +156,111 @@ export default function AppointmentsPage() {
     // Default selected products based on department
     let defaultProducts = []
     if (appointment.department === "General Medicine") {
-      defaultProducts = [productsData[0]]
+      defaultProducts = [{ id: "1", name: "Consultation - General", price: 150.0 }]
     } else {
-      defaultProducts = [productsData[1]]
+      defaultProducts = [{ id: "2", name: "Consultation - Specialist", price: 250.0 }]
     }
     setSelectedProducts(defaultProducts)
     setIsReceiptDialogOpen(true)
+  }
+
+  const handleSyncCalendar = async (appointment: any) => {
+    setSelectedAppointment(appointment)
+
+    try {
+      const { success, eventId, eventLink, error } = appointment.calendar_event_id
+        ? await updateCalendarEvent(appointment.id)
+        : await createCalendarEvent(appointment.id)
+
+      if (!success) {
+        throw new Error(error || "Failed to sync with Google Calendar")
+      }
+
+      toast({
+        title: "Calendar Synced",
+        description: appointment.calendar_event_id
+          ? "Appointment updated in Google Calendar"
+          : "Appointment added to Google Calendar",
+      })
+
+      // Refresh appointments to show updated calendar status
+      fetchAppointments()
+    } catch (err: any) {
+      console.error("Calendar sync error:", err)
+      toast({
+        title: "Calendar Sync Failed",
+        description: err.message || "Failed to sync with Google Calendar",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleCancelAppointment = async () => {
+    if (!selectedAppointment) return
+
+    try {
+      // Update appointment status in database
+      const { error } = await supabase
+        .from("appointments")
+        .update({ status: "Cancelled" })
+        .eq("id", selectedAppointment.id)
+
+      if (error) throw error
+
+      // If there's a calendar event, delete it
+      if (selectedAppointment.calendar_event_id) {
+        await deleteCalendarEvent(selectedAppointment.id)
+      }
+
+      toast({
+        title: "Appointment Cancelled",
+        description: "The appointment has been cancelled successfully",
+      })
+
+      setIsDeleteDialogOpen(false)
+      fetchAppointments()
+    } catch (err: any) {
+      console.error("Error cancelling appointment:", err)
+      toast({
+        title: "Error",
+        description: err.message || "Failed to cancel appointment",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleAddNoteSubmit = async () => {
+    if (!selectedAppointment || !newNote.trim()) return
+
+    try {
+      // Get existing notes
+      const existingNotes = selectedAppointment.notes || ""
+      const timestamp = new Date().toLocaleString()
+      const formattedNote = `[${timestamp}] ${newNote}\n\n${existingNotes}`
+
+      // Update appointment notes in database
+      const { error } = await supabase
+        .from("appointments")
+        .update({ notes: formattedNote })
+        .eq("id", selectedAppointment.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Note Added",
+        description: "The note has been added to the appointment",
+      })
+
+      setIsAddNoteDialogOpen(false)
+      fetchAppointments()
+    } catch (err: any) {
+      console.error("Error adding note:", err)
+      toast({
+        title: "Error",
+        description: err.message || "Failed to add note",
+        variant: "destructive",
+      })
+    }
   }
 
   const handlePrintReceipt = () => {
@@ -271,6 +280,17 @@ export default function AppointmentsPage() {
     const totalAmount = products.reduce((sum, product) => sum + product.price, 0)
     const date = new Date().toLocaleDateString()
     const time = new Date().toLocaleTimeString()
+    const patientName = `${appointment.patients?.first_name} ${appointment.patients?.last_name}`
+    const patientId = appointment.patients?.patient_id || "N/A"
+    const doctorName = `Dr. ${appointment.users?.first_name} ${appointment.users?.last_name}`
+
+    // Clinic information
+    const clinicInfo = {
+      name: "Luxe Clinic",
+      location: "123 Healthcare Avenue, Accra, Ghana",
+      phone: "+233 20 1234 5678",
+      email: "info@luxeclinic.com",
+    }
 
     if (format === "pos") {
       // POS receipt format (narrow)
@@ -321,9 +341,9 @@ export default function AppointmentsPage() {
             Receipt #: ${Math.floor(Math.random() * 10000)}<br>
             Date: ${date}<br>
             Time: ${time}<br>
-            Patient: ${appointment.patientName}<br>
-            Patient ID: ${appointment.patientId}<br>
-            Attendant: ${appointment.doctor}<br>
+            Patient: ${patientName}<br>
+            Patient ID: ${patientId}<br>
+            Attendant: ${doctorName}<br>
           </div>
           <div class="divider"></div>
           <div>
@@ -433,9 +453,9 @@ export default function AppointmentsPage() {
                 <p><strong>Time:</strong> ${time}</p>
               </div>
               <div class="info-column">
-                <p><strong>Patient:</strong> ${appointment.patientName}</p>
-                <p><strong>Patient ID:</strong> ${appointment.patientId}</p>
-                <p><strong>Attendant:</strong> ${appointment.doctor}</p>
+                <p><strong>Patient:</strong> ${patientName}</p>
+                <p><strong>Patient ID:</strong> ${patientId}</p>
+                <p><strong>Attendant:</strong> ${doctorName}</p>
               </div>
             </div>
             
@@ -498,130 +518,185 @@ export default function AppointmentsPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-        <div className="flex items-center justify-between mb-4">
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
-            <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
-          </TabsList>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search appointments..."
-                className="pl-8"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="md:col-span-2">
+          <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
+            <div className="flex items-center justify-between mb-4">
+              <TabsList>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="scheduled">Scheduled</TabsTrigger>
+                <TabsTrigger value="completed">Completed</TabsTrigger>
+                <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+              </TabsList>
+              <div className="flex items-center gap-2">
+                <div className="relative w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Search appointments..."
+                    className="pl-8"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <Button variant="outline" size="sm">
+                  <Filter className="mr-2 h-4 w-4" />
+                  Filter
+                </Button>
+              </div>
             </div>
-            <Button variant="outline" size="sm">
-              <Filter className="mr-2 h-4 w-4" />
-              Filter
-            </Button>
-          </div>
-        </div>
-      </Tabs>
+          </Tabs>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Patient</TableHead>
-                <TableHead>Date & Time</TableHead>
-                <TableHead>Doctor</TableHead>
-                <TableHead>Department</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAppointments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10">
-                    No appointments found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredAppointments.map((appointment) => (
-                  <TableRow key={appointment.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{appointment.patientName}</div>
-                        <div className="text-sm text-muted-foreground">{appointment.patientId}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div>{appointment.date}</div>
-                        <div className="text-sm text-muted-foreground">{appointment.time}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{appointment.doctor}</TableCell>
-                    <TableCell>{appointment.department}</TableCell>
-                    <TableCell>{getStatusBadge(appointment.status)}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <span className="sr-only">Open menu</span>
-                            <svg
-                              width="15"
-                              height="15"
-                              viewBox="0 0 15 15"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4"
-                            >
-                              <path
-                                d="M8.625 2.5C8.625 3.12132 8.12132 3.625 7.5 3.625C6.87868 3.625 6.375 3.12132 6.375 2.5C6.375 1.87868 6.87868 1.375 7.5 1.375C8.12132 1.375 8.625 1.87868 8.625 2.5ZM8.625 7.5C8.625 8.12132 8.12132 8.625 7.5 8.625C6.87868 8.625 6.375 8.12132 6.375 7.5C6.375 6.87868 6.87868 6.375 7.5 6.375C8.12132 6.375 8.625 6.87868 8.625 7.5ZM7.5 13.625C8.12132 13.625 8.625 13.1213 8.625 12.5C8.625 11.8787 8.12132 11.375 7.5 11.375C6.87868 11.375 6.375 11.8787 6.375 12.5C6.375 13.1213 6.87868 13.625 7.5 13.625Z"
-                                fill="currentColor"
-                                fillRule="evenodd"
-                                clipRule="evenodd"
-                              ></path>
-                            </svg>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-
-                          {canEditAppointment(appointment) && (
-                            <DropdownMenuItem onClick={() => handleEdit(appointment)}>
-                              Edit Appointment
-                            </DropdownMenuItem>
-                          )}
-
-                          {canOnlyAddNotes(appointment) && (
-                            <DropdownMenuItem onClick={() => handleAddNote(appointment)}>Add Note</DropdownMenuItem>
-                          )}
-
-                          {appointment.status === "Completed" && (
-                            <DropdownMenuItem onClick={() => handleGenerateReceipt(appointment)}>
-                              <Printer className="mr-2 h-4 w-4" />
-                              Generate Receipt
-                            </DropdownMenuItem>
-                          )}
-
-                          <DropdownMenuSeparator />
-
-                          {appointment.status === "Scheduled" && (
-                            <DropdownMenuItem onClick={() => handleDelete(appointment)}>
-                              Cancel Appointment
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Doctor</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-10">
+                        Loading appointments...
+                      </TableCell>
+                    </TableRow>
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-10 text-red-500">
+                        {error}
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredAppointments.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-10">
+                        No appointments found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredAppointments.map((appointment) => (
+                      <TableRow key={appointment.id}>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">
+                              {appointment.patients?.first_name} {appointment.patients?.last_name}
+                            </div>
+                            <div className="text-sm text-muted-foreground">{appointment.patients?.patient_id}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div>{appointment.date}</div>
+                            <div className="text-sm text-muted-foreground">{appointment.time}</div>
+                            {appointment.calendar_event_id && (
+                              <div className="text-xs text-blue-500">
+                                <a
+                                  href={appointment.calendar_event_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="currentColor"
+                                    className="w-3 h-3"
+                                  >
+                                    <path d="M12.75 12.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM7.5 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM8.25 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM9.75 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM10.5 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM12.75 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM14.25 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM15 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM16.5 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM15 12.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM16.5 13.5a.75.75 0 100-1.5.75.75 0 000 1.5z" />
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3A.75.75 0 0118 3v1.5h.75a3 3 0 013 3v11.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V7.5a3 3 0 013-3H6V3a.75.75 0 01.75-.75zm13.5 9a1.5 1.5 0 00-1.5-1.5H5.25a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5v-7.5z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  Calendar
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          Dr. {appointment.users?.first_name} {appointment.users?.last_name}
+                        </TableCell>
+                        <TableCell>{appointment.department}</TableCell>
+                        <TableCell>{getStatusBadge(appointment.status)}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <span className="sr-only">Open menu</span>
+                                <svg
+                                  width="15"
+                                  height="15"
+                                  viewBox="0 0 15 15"
+                                  fill="none"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                >
+                                  <path
+                                    d="M8.625 2.5C8.625 3.12132 8.12132 3.625 7.5 3.625C6.87868 3.625 6.375 3.12132 6.375 2.5C6.375 1.87868 6.87868 1.375 7.5 1.375C8.12132 1.375 8.625 1.87868 8.625 2.5ZM8.625 7.5C8.625 8.12132 8.12132 8.625 7.5 8.625C6.87868 8.625 6.375 8.12132 6.375 7.5C6.375 6.87868 6.87868 6.375 7.5 6.375C8.12132 6.375 8.625 6.87868 8.625 7.5ZM7.5 13.625C8.12132 13.625 8.625 13.1213 8.625 12.5C8.625 11.8787 8.12132 11.375 7.5 11.375C6.87868 11.375 6.375 11.8787 6.375 12.5C6.375 13.1213 6.87868 13.625 7.5 13.625Z"
+                                    fill="currentColor"
+                                    fillRule="evenodd"
+                                    clipRule="evenodd"
+                                  ></path>
+                                </svg>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+
+                              {canEditAppointment(appointment) && (
+                                <DropdownMenuItem onClick={() => handleEdit(appointment)}>
+                                  Edit Appointment
+                                </DropdownMenuItem>
+                              )}
+
+                              {canOnlyAddNotes(appointment) && (
+                                <DropdownMenuItem onClick={() => handleAddNote(appointment)}>Add Note</DropdownMenuItem>
+                              )}
+
+                              {appointment.status === "Completed" && (
+                                <DropdownMenuItem onClick={() => handleGenerateReceipt(appointment)}>
+                                  <Printer className="mr-2 h-4 w-4" />
+                                  Generate Receipt
+                                </DropdownMenuItem>
+                              )}
+
+                              {appointment.status === "Scheduled" && (
+                                <DropdownMenuItem onClick={() => handleSyncCalendar(appointment)}>
+                                  {appointment.calendar_event_id ? "Update in Calendar" : "Add to Calendar"}
+                                </DropdownMenuItem>
+                              )}
+
+                              <DropdownMenuSeparator />
+
+                              {appointment.status === "Scheduled" && (
+                                <DropdownMenuItem onClick={() => handleDelete(appointment)}>
+                                  Cancel Appointment
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div>
+          <CalendarIntegration />
+        </div>
+      </div>
 
       {/* Add Note Dialog */}
       <Dialog open={isAddNoteDialogOpen} onOpenChange={setIsAddNoteDialogOpen}>
@@ -646,7 +721,7 @@ export default function AppointmentsPage() {
             <Button variant="outline" onClick={() => setIsAddNoteDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => setIsAddNoteDialogOpen(false)}>Add Note</Button>
+            <Button onClick={handleAddNoteSubmit}>Add Note</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -665,15 +740,19 @@ export default function AppointmentsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-sm font-medium text-gray-500">Name:</span>
-                    <span className="ml-1">{selectedAppointment?.patientName}</span>
+                    <span className="ml-1">
+                      {selectedAppointment?.patients?.first_name} {selectedAppointment?.patients?.last_name}
+                    </span>
                   </div>
                   <div>
                     <span className="text-sm font-medium text-gray-500">ID:</span>
-                    <span className="ml-1">{selectedAppointment?.patientId}</span>
+                    <span className="ml-1">{selectedAppointment?.patients?.patient_id}</span>
                   </div>
                   <div>
                     <span className="text-sm font-medium text-gray-500">Doctor:</span>
-                    <span className="ml-1">{selectedAppointment?.doctor}</span>
+                    <span className="ml-1">
+                      Dr. {selectedAppointment?.users?.first_name} {selectedAppointment?.users?.last_name}
+                    </span>
                   </div>
                   <div>
                     <span className="text-sm font-medium text-gray-500">Department:</span>
@@ -694,7 +773,16 @@ export default function AppointmentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {productsData.map((product) => (
+                  {[
+                    { id: "1", name: "Consultation - General", price: 150.0 },
+                    { id: "2", name: "Consultation - Specialist", price: 250.0 },
+                    { id: "3", name: "Blood Test - Basic", price: 80.0 },
+                    { id: "4", name: "Blood Test - Comprehensive", price: 180.0 },
+                    { id: "5", name: "X-Ray", price: 200.0 },
+                    { id: "6", name: "Ultrasound", price: 250.0 },
+                    { id: "7", name: "ECG", price: 120.0 },
+                    { id: "8", name: "Vaccination - Basic", price: 50.0 },
+                  ].map((product) => (
                     <TableRow key={product.id}>
                       <TableCell>
                         <input
@@ -748,8 +836,67 @@ export default function AppointmentsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add/Edit Appointment Dialog would go here */}
-      {/* Delete Appointment Dialog would go here */}
+      {/* Delete Appointment Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Appointment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this appointment? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {selectedAppointment && (
+              <div className="rounded-md bg-gray-50 p-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-sm font-medium text-gray-500">Patient:</span>
+                    <span className="ml-1">
+                      {selectedAppointment.patients?.first_name} {selectedAppointment.patients?.last_name}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-500">Date:</span>
+                    <span className="ml-1">{selectedAppointment.date}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-500">Time:</span>
+                    <span className="ml-1">{selectedAppointment.time}</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-500">Doctor:</span>
+                    <span className="ml-1">
+                      Dr. {selectedAppointment.users?.first_name} {selectedAppointment.users?.last_name}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleCancelAppointment}>
+              Yes, Cancel Appointment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Appointment Dialog */}
+      <AppointmentDialog
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
+        onSuccess={fetchAppointments}
+      />
+
+      <AppointmentDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        appointment={selectedAppointment}
+        onSuccess={fetchAppointments}
+      />
     </div>
   )
 }

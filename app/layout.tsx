@@ -1,20 +1,21 @@
 import "./globals.css"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-
-const inter = Inter({ subsets: ["latin"] })
+import type React from "react"
+import { ThemeProvider } from "@/components/theme-provider"
 
 export const metadata: Metadata = {
-  title: "Luxe Clinic GH",
-  description: "An EHR system for modern clinics built with Supabase + Next.js",
-  generator: "v0.dev",
+  title: "Luxe Clinic GH - EHR System",
+  description: "Electronic Health Record System for Luxe Clinic GH",
+    generator: 'v0.dev'
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        {children}
+      <body>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   )

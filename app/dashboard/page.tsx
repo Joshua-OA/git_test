@@ -1,6 +1,5 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -16,16 +15,68 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import {
+  getDashboardStats,
+  getUpcomingAppointments,
+  getRecentPatientNotes,
+  getWaitingPatients,
+  getPendingLabTests,
+  getPendingPrescriptions,
+  getPendingPayments,
+  getDepartmentPerformance,
+} from "../actions/dashboard"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardPage() {
-  const searchParams = useSearchParams()
   const [role, setRole] = useState<string>("reception")
   const [greeting, setGreeting] = useState<string>("")
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<any>({})
+  const [upcomingAppointments, setUpcomingAppointments] = useState<any[]>([])
+  const [recentNotes, setRecentNotes] = useState<any[]>([])
+  const [waitingPatients, setWaitingPatients] = useState<any[]>([])
+  const [pendingLabTests, setPendingLabTests] = useState<any[]>([])
+  const [pendingPrescriptions, setPendingPrescriptions] = useState<any[]>([])
+  const [pendingPayments, setPendingPayments] = useState<any[]>([])
+  const [departmentPerformance, setDepartmentPerformance] = useState<any[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
-    const roleParam = searchParams.get("role")
-    if (roleParam) {
-      setRole(roleParam)
+    // Get role from Supabase auth
+    const fetchUserRole = async () => {
+      setLoading(true)
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (user) {
+          // First check user metadata for role
+          const userRole = user.user_metadata?.role
+
+          if (userRole) {
+            setRole(userRole)
+          } else {
+            // If not in metadata, check the users table
+            const { data: userData } = await supabase.from("users").select("role").eq("id", user.id).single()
+
+            if (userData?.role) {
+              setRole(userData.role)
+            }
+          }
+
+          // Fetch dashboard data based on role
+          await fetchDashboardData(userRole || userData?.role || "reception")
+        }
+      } catch (err) {
+        console.error("Error fetching user role:", err)
+        setError("Failed to load dashboard data. Please refresh the page.")
+      } finally {
+        setLoading(false)
+      }
     }
 
     // Set greeting based on time of day
@@ -33,7 +84,72 @@ export default function DashboardPage() {
     if (hour < 12) setGreeting("Good morning")
     else if (hour < 18) setGreeting("Good afternoon")
     else setGreeting("Good evening")
-  }, [searchParams])
+
+    fetchUserRole()
+  }, [supabase])
+
+  const fetchDashboardData = async (userRole: string) => {
+    try {
+      // Fetch common stats for all roles
+      const { success, stats: dashboardStats, error: statsError } = await getDashboardStats(userRole)
+
+      if (!success) {
+        throw new Error(statsError || "Failed to fetch dashboard statistics")
+      }
+
+      setStats(dashboardStats)
+
+      // Fetch role-specific data
+      switch (userRole) {
+        case "doctor":
+          const { success: aptSuccess, appointments, error: aptError } = await getUpcomingAppointments(4)
+          const { success: notesSuccess, notes, error: notesError } = await getRecentPatientNotes(3)
+
+          if (aptSuccess) setUpcomingAppointments(appointments)
+          if (notesSuccess) setRecentNotes(notes)
+          break
+
+        case "nurse":
+          const { success: patientsSuccess, patients, error: patientsError } = await getWaitingPatients(4)
+
+          if (patientsSuccess) setWaitingPatients(patients)
+          break
+
+        case "lab":
+          const { success: labSuccess, tests, error: labError } = await getPendingLabTests(5)
+
+          if (labSuccess) setPendingLabTests(tests)
+          break
+
+        case "pharmacist":
+          const { success: rxSuccess, prescriptions, error: rxError } = await getPendingPrescriptions(4)
+
+          if (rxSuccess) setPendingPrescriptions(prescriptions)
+          break
+
+        case "admin":
+          const { success: deptSuccess, performance, error: deptError } = await getDepartmentPerformance()
+
+          if (deptSuccess) setDepartmentPerformance(performance)
+          break
+
+        case "reception":
+          const { success: recAptSuccess, appointments: recAppointments } = await getUpcomingAppointments(5)
+
+          if (recAptSuccess) setUpcomingAppointments(recAppointments)
+          break
+
+        case "cashier":
+          const { success: paySuccess, payments, error: payError } = await getPendingPayments(5)
+
+          if (paySuccess) setPendingPayments(payments)
+          break
+      }
+    } catch (err) {
+      console.error("Error fetching dashboard data:", err)
+      setError("Failed to load dashboard data. Please refresh the page.")
+    }
+  }
 
   // Dashboard components for different roles
   const DoctorDashboard = () => (
@@ -45,8 +161,16 @@ export default function DashboardPage() {
             <Calendar className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-gray-500">3 pending, 9 confirmed</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.today || 0}</div>
+                <p className="text-xs text-gray-500">
+                  {stats.appointments?.pending || 0} pending, {stats.appointments?.completed || 0} completed
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -55,8 +179,14 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8</div>
-            <p className="text-xs text-gray-500">4 more than yesterday</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.completed || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -65,8 +195,14 @@ export default function DashboardPage() {
             <Flask className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5</div>
-            <p className="text-xs text-gray-500">2 urgent</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.lab?.pending || 0}</div>
+                <p className="text-xs text-gray-500">{stats.lab?.urgent || 0} urgent</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -75,8 +211,14 @@ export default function DashboardPage() {
             <ClipboardList className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">15</div>
-            <p className="text-xs text-gray-500">Today</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.prescriptions?.new || 0}</div>
+                <p className="text-xs text-gray-500">Today</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -88,25 +230,30 @@ export default function DashboardPage() {
             <CardDescription>Your schedule for today</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { time: "10:00 AM", patient: "John Smith", reason: "Follow-up" },
-                { time: "11:30 AM", patient: "Sarah Johnson", reason: "Consultation" },
-                { time: "1:15 PM", patient: "Michael Brown", reason: "Test Results" },
-                { time: "2:45 PM", patient: "Emily Davis", reason: "Annual Check-up" },
-              ].map((appointment, index) => (
-                <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                    <Clock className="h-5 w-5" />
+            {loading ? (
+              <div className="space-y-4">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : upcomingAppointments.length > 0 ? (
+              <div className="space-y-4">
+                {upcomingAppointments.map((appointment, index) => (
+                  <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                      <Clock className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{appointment.patient}</p>
+                      <p className="text-sm text-gray-500">{appointment.reason}</p>
+                    </div>
+                    <div className="text-sm font-medium">{appointment.time}</div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{appointment.patient}</p>
-                    <p className="text-sm text-gray-500">{appointment.reason}</p>
-                  </div>
-                  <div className="text-sm font-medium">{appointment.time}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-gray-500">No upcoming appointments</div>
+            )}
           </CardContent>
         </Card>
 
@@ -116,40 +263,34 @@ export default function DashboardPage() {
             <CardDescription>Latest updates from your patients</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                {
-                  patient: "Robert Wilson",
-                  note: "Prescribed antibiotics for respiratory infection. Follow-up in 7 days.",
-                  time: "Today, 9:15 AM",
-                },
-                {
-                  patient: "Jennifer Lee",
-                  note: "Blood pressure elevated. Adjusted medication dosage. Monitor for 2 weeks.",
-                  time: "Yesterday, 3:30 PM",
-                },
-                {
-                  patient: "David Martinez",
-                  note: "Lab results show improved kidney function. Continue current treatment plan.",
-                  time: "Yesterday, 11:45 AM",
-                },
-              ].map((note, index) => (
-                <div key={index} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{note.patient}</span>
-                    <span className="text-xs text-gray-500">{note.time}</span>
+            {loading ? (
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full" />
+                ))}
+              </div>
+            ) : recentNotes.length > 0 ? (
+              <div className="space-y-4">
+                {recentNotes.map((note, index) => (
+                  <div key={index} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{note.patient}</span>
+                      <span className="text-xs text-gray-500">{note.time}</span>
+                    </div>
+                    <p className="text-sm text-gray-600">{note.note}</p>
+                    <div className="pt-1">
+                      <Link href={`/dashboard/medical-records?patient=${note.id}`}>
+                        <Button variant="link" className="h-auto p-0 text-blue-600">
+                          View full record
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-600">{note.note}</p>
-                  <div className="pt-1">
-                    <Link href={`/dashboard/medical-records?role=${role}`}>
-                      <Button variant="link" className="h-auto p-0 text-blue-600">
-                        View full record
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-gray-500">No recent patient notes</div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -165,8 +306,14 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-gray-500">6 waiting now</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.today || 0}</div>
+                <p className="text-xs text-gray-500">{stats.patients?.waiting || 0} waiting now</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -175,8 +322,14 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">18</div>
-            <p className="text-xs text-gray-500">Today</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.completed || 0}</div>
+                <p className="text-xs text-gray-500">Today</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -185,8 +338,14 @@ export default function DashboardPage() {
             <FileText className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">7</div>
-            <p className="text-xs text-gray-500">2 high priority</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.pending || 0}</div>
+                <p className="text-xs text-gray-500">{stats.lab?.urgent || 0} high priority</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -198,27 +357,32 @@ export default function DashboardPage() {
             <CardDescription>Patients waiting to be seen</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { name: "Alice Thompson", time: "Waiting for 15 min", doctor: "Dr. Johnson", room: "Room 3" },
-                { name: "Mark Rodriguez", time: "Waiting for 10 min", doctor: "Dr. Smith", room: "Room 1" },
-                { name: "Karen Williams", time: "Waiting for 5 min", doctor: "Dr. Johnson", room: "Room 3" },
-                { name: "Thomas Clark", time: "Just arrived", doctor: "Dr. Wilson", room: "Room 2" },
-              ].map((patient, index) => (
-                <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700">
-                    <Users className="h-5 w-5" />
+            {loading ? (
+              <div className="space-y-4">
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : waitingPatients.length > 0 ? (
+              <div className="space-y-4">
+                {waitingPatients.map((patient, index) => (
+                  <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{patient.name}</p>
+                      <p className="text-sm text-gray-500">
+                        {patient.doctor} - {patient.room}
+                      </p>
+                    </div>
+                    <div className="text-sm font-medium">{patient.waitingTime}</div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{patient.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {patient.doctor} - {patient.room}
-                    </p>
-                  </div>
-                  <div className="text-sm font-medium">{patient.time}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-gray-500">No patients waiting</div>
+            )}
           </CardContent>
         </Card>
 
@@ -261,8 +425,14 @@ export default function DashboardPage() {
             <Flask className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">15</div>
-            <p className="text-xs text-gray-500">4 urgent</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.lab?.pending || 0}</div>
+                <p className="text-xs text-gray-500">{stats.lab?.urgent || 0} urgent</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -271,8 +441,14 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8</div>
-            <p className="text-xs text-gray-500">2 completing today</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.lab?.inProgress || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -281,8 +457,14 @@ export default function DashboardPage() {
             <FileText className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-gray-500">3 more than yesterday</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.lab?.completed || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -293,68 +475,42 @@ export default function DashboardPage() {
           <CardDescription>Pending lab test requests</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {[
-              {
-                patient: "James Wilson",
-                test: "Complete Blood Count",
-                doctor: "Dr. Johnson",
-                priority: "Urgent",
-                requested: "Today, 8:30 AM",
-              },
-              {
-                patient: "Maria Garcia",
-                test: "Lipid Panel",
-                doctor: "Dr. Smith",
-                priority: "Normal",
-                requested: "Today, 9:15 AM",
-              },
-              {
-                patient: "Robert Taylor",
-                test: "Liver Function",
-                doctor: "Dr. Wilson",
-                priority: "Urgent",
-                requested: "Today, 10:00 AM",
-              },
-              {
-                patient: "Susan Anderson",
-                test: "Thyroid Panel",
-                doctor: "Dr. Johnson",
-                priority: "Normal",
-                requested: "Yesterday, 4:30 PM",
-              },
-              {
-                patient: "Michael Brown",
-                test: "Urinalysis",
-                doctor: "Dr. Smith",
-                priority: "Normal",
-                requested: "Yesterday, 3:45 PM",
-              },
-            ].map((request, index) => (
-              <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                    request.priority === "Urgent" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
-                  }`}
-                >
-                  <Flask className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">{request.patient}</p>
-                    <span className={`text-xs ${request.priority === "Urgent" ? "text-red-500" : "text-blue-500"}`}>
-                      {request.priority}
-                    </span>
+          {loading ? (
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : pendingLabTests.length > 0 ? (
+            <div className="space-y-4">
+              {pendingLabTests.map((request, index) => (
+                <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      request.priority === "Urgent" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    <Flask className="h-5 w-5" />
                   </div>
-                  <p className="text-sm">{request.test}</p>
-                  <p className="text-xs text-gray-500">
-                    Requested by {request.doctor} • {request.requested}
-                  </p>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{request.patient}</p>
+                      <span className={`text-xs ${request.priority === "Urgent" ? "text-red-500" : "text-blue-500"}`}>
+                        {request.priority}
+                      </span>
+                    </div>
+                    <p className="text-sm">{request.test}</p>
+                    <p className="text-xs text-gray-500">
+                      Requested by {request.doctor} • {request.requested}
+                    </p>
+                  </div>
+                  <Button size="sm">Process</Button>
                 </div>
-                <Button size="sm">Process</Button>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-gray-500">No pending lab tests</div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -369,8 +525,14 @@ export default function DashboardPage() {
             <ClipboardList className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">18</div>
-            <p className="text-xs text-gray-500">7 pending preparation</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.prescriptions?.new || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -379,8 +541,14 @@ export default function DashboardPage() {
             <Pill className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-gray-500">3 notified</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.prescriptions?.ready || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -389,8 +557,14 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-gray-500">5 more than yesterday</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.prescriptions?.dispensed || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -399,8 +573,14 @@ export default function DashboardPage() {
             <Activity className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">8</div>
-            <p className="text-xs text-gray-500">3 critical</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.inventory?.lowStock || 0}</div>
+                <p className="text-xs text-gray-500">{stats.inventory?.critical || 0} critical</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -411,79 +591,60 @@ export default function DashboardPage() {
           <CardDescription>Prescriptions waiting to be processed</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {[
-              {
-                patient: "Thomas Moore",
-                medication: "Amoxicillin 500mg",
-                doctor: "Dr. Johnson",
-                status: "Pending",
-                time: "10:15 AM",
-              },
-              {
-                patient: "Lisa Garcia",
-                medication: "Lisinopril 10mg",
-                doctor: "Dr. Smith",
-                status: "Preparing",
-                time: "9:30 AM",
-              },
-              {
-                patient: "William Davis",
-                medication: "Metformin 1000mg",
-                doctor: "Dr. Wilson",
-                status: "Ready",
-                time: "9:00 AM",
-              },
-              {
-                patient: "Jennifer Lee",
-                medication: "Atorvastatin 20mg",
-                doctor: "Dr. Johnson",
-                status: "Pending",
-                time: "8:45 AM",
-              },
-            ].map((prescription, index) => (
-              <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                    prescription.status === "Ready"
-                      ? "bg-green-100 text-green-700"
-                      : prescription.status === "Preparing"
-                        ? "bg-orange-100 text-orange-700"
-                        : "bg-blue-100 text-blue-700"
-                  }`}
-                >
-                  <Pill className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">{prescription.patient}</p>
-                    <span
-                      className={`text-xs ${
-                        prescription.status === "Ready"
-                          ? "text-green-500"
-                          : prescription.status === "Preparing"
-                            ? "text-orange-500"
-                            : "text-blue-500"
-                      }`}
-                    >
-                      {prescription.status}
-                    </span>
+          {loading ? (
+            <div className="space-y-4">
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : pendingPrescriptions.length > 0 ? (
+            <div className="space-y-4">
+              {pendingPrescriptions.map((prescription, index) => (
+                <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                      prescription.status === "Ready"
+                        ? "bg-green-100 text-green-700"
+                        : prescription.status === "Preparing"
+                          ? "bg-orange-100 text-orange-700"
+                          : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    <Pill className="h-5 w-5" />
                   </div>
-                  <p className="text-sm">{prescription.medication}</p>
-                  <p className="text-xs text-gray-500">
-                    Prescribed by {prescription.doctor} • {prescription.time}
-                  </p>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{prescription.patient}</p>
+                      <span
+                        className={`text-xs ${
+                          prescription.status === "Ready"
+                            ? "text-green-500"
+                            : prescription.status === "Preparing"
+                              ? "text-orange-500"
+                              : "text-blue-500"
+                        }`}
+                      >
+                        {prescription.status}
+                      </span>
+                    </div>
+                    <p className="text-sm">{prescription.medication}</p>
+                    <p className="text-xs text-gray-500">
+                      Prescribed by {prescription.doctor} • {prescription.time}
+                    </p>
+                  </div>
+                  <Button size="sm">
+                    {prescription.status === "Ready"
+                      ? "Dispense"
+                      : prescription.status === "Preparing"
+                        ? "Mark Ready"
+                        : "Prepare"}
+                  </Button>
                 </div>
-                <Button size="sm">
-                  {prescription.status === "Ready"
-                    ? "Dispense"
-                    : prescription.status === "Preparing"
-                      ? "Mark Ready"
-                      : "Prepare"}
-                </Button>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center text-gray-500">No pending prescriptions</div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -498,8 +659,14 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2,856</div>
-            <p className="text-xs text-gray-500">+156 this month</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.patients?.total || 0}</div>
+                <p className="text-xs text-gray-500">+{stats.patients?.today || 0} this month</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -508,8 +675,14 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₵24,685</div>
-            <p className="text-xs text-gray-500">+12% from last month</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">₵{stats.revenue?.total?.toLocaleString() || 0}</div>
+                <p className="text-xs text-gray-500">₵{stats.revenue?.today?.toLocaleString() || 0} today</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -518,8 +691,14 @@ export default function DashboardPage() {
             <Calendar className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">145</div>
-            <p className="text-xs text-gray-500">This week</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.total || 0}</div>
+                <p className="text-xs text-gray-500">{stats.appointments?.today || 0} today</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -528,8 +707,14 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">32</div>
-            <p className="text-xs text-gray-500">Across all departments</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.staff?.active || 0}</div>
+                <p className="text-xs text-gray-500">of {stats.staff?.total || 0} total staff</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -541,25 +726,29 @@ export default function DashboardPage() {
             <CardDescription>Patient throughput by department</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { department: "General Medicine", patients: 78, change: "+12%" },
-                { department: "Pediatrics", patients: 45, change: "+8%" },
-                { department: "Cardiology", patients: 32, change: "+15%" },
-                { department: "Orthopedics", patients: 28, change: "-3%" },
-                { department: "Dermatology", patients: 24, change: "+5%" },
-              ].map((dept, index) => (
-                <div key={index} className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <p className="font-medium">{dept.department}</p>
+            {loading ? (
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-6 w-full" />
+                ))}
+              </div>
+            ) : departmentPerformance.length > 0 ? (
+              <div className="space-y-4">
+                {departmentPerformance.map((dept, index) => (
+                  <div key={index} className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <p className="font-medium">{dept.department}</p>
+                    </div>
+                    <div className="text-sm font-medium">{dept.patients} patients</div>
+                    <div className={`text-xs ${dept.change.startsWith("+") ? "text-green-500" : "text-red-500"}`}>
+                      {dept.change}
+                    </div>
                   </div>
-                  <div className="text-sm font-medium">{dept.patients} patients</div>
-                  <div className={`text-xs ${dept.change.startsWith("+") ? "text-green-500" : "text-red-500"}`}>
-                    {dept.change}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-gray-500">No department data available</div>
+            )}
           </CardContent>
         </Card>
 
@@ -585,7 +774,7 @@ export default function DashboardPage() {
                 },
                 {
                   title: "Inventory Alert",
-                  message: "5 medications below reorder threshold",
+                  message: `${stats.inventory?.lowStock || 0} medications below reorder threshold`,
                   time: "Yesterday",
                   type: "alert",
                 },
@@ -629,8 +818,14 @@ export default function DashboardPage() {
             <Calendar className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">32</div>
-            <p className="text-xs text-gray-500">8 checked in</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.appointments?.today || 0}</div>
+                <p className="text-xs text-gray-500">{stats.patients?.waiting || 0} checked in</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -639,8 +834,14 @@ export default function DashboardPage() {
             <Clock className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">6</div>
-            <p className="text-xs text-gray-500">Average wait: 12 min</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.patients?.waiting || 0}</div>
+                <p className="text-xs text-gray-500">&nbsp;</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -649,8 +850,14 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">5</div>
-            <p className="text-xs text-gray-500">Today</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.patients?.today || 0}</div>
+                <p className="text-xs text-gray-500">Today</p>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -659,8 +866,14 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">12</div>
-            <p className="text-xs text-gray-500">₵1,245 total</p>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.revenue?.pending || 0}</div>
+                <p className="text-xs text-gray-500">₵{stats.revenue?.pending?.toLocaleString() || 0} total</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -672,29 +885,240 @@ export default function DashboardPage() {
             <CardDescription>Upcoming appointments</CardDescription>
           </CardHeader>
           <CardContent>
+            {loading ? (
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : upcomingAppointments.length > 0 ? (
+              <div className="space-y-4">
+                {upcomingAppointments.map((appointment, index) => (
+                  <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                        appointment.status === "Checked In"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      <Clock className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <p className="font-medium">{appointment.patient}</p>
+                        <span
+                          className={`text-xs ${
+                            appointment.status === "Checked In" ? "text-green-500" : "text-blue-500"
+                          }`}
+                        >
+                          {appointment.status || "Scheduled"}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500">{appointment.doctor}</p>
+                      <p className="text-xs text-gray-500">{appointment.time}</p>
+                    </div>
+                    <Button size="sm" variant={appointment.status === "Checked In" ? "outline" : "default"}>
+                      {appointment.status === "Checked In" ? "View" : "Check In"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-gray-500">No appointments scheduled for today</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="col-span-1">
+          <CardHeader>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>Common reception tasks</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Button className="h-24 flex-col gap-2" variant="outline">
+                <Users className="h-5 w-5" />
+                <span>Register New Patient</span>
+              </Button>
+              <Button className="h-24 flex-col gap-2" variant="outline">
+                <Calendar className="h-5 w-5" />
+                <span>Schedule Appointment</span>
+              </Button>
+              <Button className="h-24 flex-col gap-2" variant="outline">
+                <DollarSign className="h-5 w-5" />
+                <span>Process Payment</span>
+              </Button>
+              <Button className="h-24 flex-col gap-2" variant="outline">
+                <FileText className="h-5 w-5" />
+                <span>Update Patient Info</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+
+  const CashierDashboard = () => (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Pending Payments</CardTitle>
+            <DollarSign className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.revenue?.pending || 0}</div>
+                <p className="text-xs text-gray-500">₵{stats.revenue?.pending?.toLocaleString() || 0} total</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Payments Processed</CardTitle>
+            <Activity className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{stats.revenue?.today || 0}</div>
+                <p className="text-xs text-gray-500">₵{stats.revenue?.today?.toLocaleString() || 0} today</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Cash Balance</CardTitle>
+            <DollarSign className="h-4 w-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-full" />
+            ) : (
+              <>
+                <div className="text-2xl font-bold">₵{(stats.revenue?.today || 0) * 0.6}</div>
+                <p className="text-xs text-gray-500">Current drawer amount</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Queue</CardTitle>
+          <CardDescription>Payments waiting to be processed</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
             <div className="space-y-4">
-              {[
-                { time: "10:00 AM", patient: "John Smith", doctor: "Dr. Johnson", status: "Checked In" },
-                { time: "10:30 AM", patient: "Maria Garcia", doctor: "Dr. Smith", status: "Scheduled" },
-                { time: "11:00 AM", patient: "Robert Wilson", doctor: "Dr. Johnson", status: "Scheduled" },
-                { time: "11:30 AM", patient: "Emily Davis", doctor: "Dr. Wilson", status: "Scheduled" },
-                { time: "1:00 PM", patient: "Michael Brown", doctor: "Dr. Smith", status: "Scheduled" },
-              ].map((appointment, index) => (
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : pendingPayments.length > 0 ? (
+            <div className="space-y-4">
+              {pendingPayments.map((payment, index) => (
                 <div key={index} className="flex items-center gap-4 rounded-lg border p-3">
-                  <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                      appointment.status === "Checked In" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-                    }`}
-                  >
-                    <Clock className="h-5 w-5" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700">
+                    <DollarSign className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{appointment.patient}</p>
-                    <p className="text-sm text-gray-500">
-                      {appointment.doctor} - {appointment.room}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{payment.patient}</p>
+                      <span className="font-medium">₵{payment.amount}</span>
+                    </div>
+                    <p className="text-sm">{payment.type}</p>
+                    <p className="text-xs text-gray-500">Waiting since {payment.time}</p>
                   </div>
-                  <div className="text-sm font-medium">{appointment.time}</div>
+                  <Button size="sm">Process</Button>
                 </div>
               ))}
-            </div\
+            </div>
+          ) : (
+            <div className="py-8 text-center text-gray-500">No pending payments</div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+
+  // Helper function to get role name
+  const getRoleName = (role: string): string => {
+    switch (role) {
+      case "doctor":
+        return "Doctor"
+      case "nurse":
+        return "Nurse"
+      case "lab":
+        return "Lab Technician"
+      case "pharmacist":
+        return "Pharmacist"
+      case "admin":
+        return "Administrator"
+      case "reception":
+        return "Receptionist"
+      case "cashier":
+        return "Cashier"
+      default:
+        return "Receptionist"
+    }
+  }
+
+  // Render dashboard based on role
+  const renderDashboard = () => {
+    switch (role) {
+      case "doctor":
+        return <DoctorDashboard />
+      case "nurse":
+        return <NurseDashboard />
+      case "lab":
+        return <LabDashboard />
+      case "pharmacist":
+        return <PharmacistDashboard />
+      case "admin":
+        return <AdminDashboard />
+      case "reception":
+        return <ReceptionDashboard />
+      case "cashier":
+        return <CashierDashboard />
+      default:
+        return <ReceptionDashboard />
+    }
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center p-8">
+        <div className="rounded-lg bg-red-50 p-6 text-center">
+          <h2 className="mb-2 text-lg font-semibold text-red-800">Error Loading Dashboard</h2>
+          <p className="text-red-600">{error}</p>
+          <Button className="mt-4" onClick={() => window.location.reload()}>
+            Refresh Page
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">{greeting}!</h2>
+        <p className="text-muted-foreground">
+          Here's what's happening in your {getRoleName(role).toLowerCase()} dashboard at Luxe Clinic GH today.
+        </p>
+      </div>
+      {renderDashboard()}
+    </div>
+  )
+}

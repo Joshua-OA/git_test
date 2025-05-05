@@ -19,9 +19,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { signIn } from "./actions/auth"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 export default function Home() {
   const router = useRouter()
+  const supabase = createClientComponentClient()
   const [loginData, setLoginData] = useState({ email: "", password: "" })
   const [loginErrors, setLoginErrors] = useState<{ email?: string; password?: string; general?: string }>({})
   const [isLoading, setIsLoading] = useState(false)
@@ -50,11 +52,8 @@ export default function Home() {
       const result = await signIn(formData)
 
       if (result.success) {
-        // Store role in localStorage
-        localStorage.setItem("user_role", result.role)
-
-        // Navigate to dashboard with role
-        router.push(`/dashboard?role=${result.role}`)
+        // Navigate to dashboard
+        router.push("/dashboard")
       } else {
         setLoginErrors({ general: result.error || "Invalid credentials" })
       }
@@ -66,14 +65,25 @@ export default function Home() {
     }
   }
 
-  const handleResetPassword = () => {
-    // In a real app, this would send a password reset email
-    setResetSuccess(true)
-    setTimeout(() => {
-      setIsResetDialogOpen(false)
-      setResetSuccess(false)
-      setResetEmail("")
-    }, 3000)
+  const handleResetPassword = async () => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+
+      if (error) {
+        throw error
+      }
+
+      setResetSuccess(true)
+      setTimeout(() => {
+        setIsResetDialogOpen(false)
+        setResetSuccess(false)
+        setResetEmail("")
+      }, 3000)
+    } catch (error) {
+      console.error("Password reset error:", error)
+    }
   }
 
   return (
@@ -198,7 +208,6 @@ export default function Home() {
               <div>reception@example.com</div>
               <div>cashier@example.com</div>
             </div>
-            <p className="mt-2 text-center text-xs text-gray-500">Admin: evansadenku@gmail.com / Syncmaster@79</p>
           </CardFooter>
         </form>
       </Card>
