@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove basePath since we're using a subdomain now
-  // basePath: '/emr',
-  
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -10,24 +7,18 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['localhost', 'luxeclinicgh.com', 'emr.luxeclinicgh.com'],
+    unoptimized: true,
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'luxeclinicgh.com',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'emr.luxeclinicgh.com',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "**",
       },
     ],
-    unoptimized: true,
   },
-  // Add experimental features if needed
   experimental: {
-    serverActions: true,
+    serverActions: {
+      allowedOrigins: ["localhost:3000", "luxeclinicgh.com", "emr.luxeclinicgh.com"]
+    }
   }
 };
 
