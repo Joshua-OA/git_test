@@ -1,13 +1,62 @@
 "use server"
 
+import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { createServerSupabaseClient } from "@/lib/supabase"
 import { google } from "googleapis"
+import { getRedirectUri } from "@/lib/env"
+
+// Google OAuth configuration
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!
+const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://luxeclinicgh.com/emr/auth/google/callback"
+
+// Google OAuth scopes for calendar access
+const SCOPES = ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/calendar.events"]
+
+// Function to initiate Google OAuth flow
+export async function initiateGoogleAuth() {
+  const supabase = createServerActionClient({ cookies })
+
+  // Get the current user
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: "User not authenticated" }
+  }
+
+  // Generate a random state parameter to prevent CSRF attacks
+  const state = Math.random().toString(36).substring(2, 15)
+
+  // Store the state in the database for verification later
+  await supabase.from("oauth_states").upsert({
+    user_id: user.id,
+    state,
+    created_at: new Date().toISOString(),
+  })
+
+  // Construct the Google OAuth URL
+  const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth")
+  authUrl.searchParams.append("client_id", GOOGLE_CLIENT_ID)
+  authUrl.searchParams.append("redirect_uri", REDIRECT_URI)
+  authUrl.searchParams.append("response_type", "code")
+  authUrl.searchParams.append("scope", SCOPES.join(" "))
+  authUrl.searchParams.append("access_type", "offline")
+  authUrl.searchParams.append("prompt", "consent")
+  authUrl.searchParams.append("state", state)
+
+  // Redirect to the Google OAuth URL
+  redirect(authUrl.toString())
+}
 
 // Google Calendar API setup
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI,
+  process.env.GOOGLE_REDIRECT_URI || getRedirectUri(),
 )
 
 const calendar = google.calendar({ version: "v3", auth: oauth2Client })

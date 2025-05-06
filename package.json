@@ -60,6 +60,8 @@
     "zod": "^3.24.1",
     "@supabase/supabase-js": "latest",
     "@supabase/auth-helpers-nextjs": "latest",
+    "child_process": "latest",
+    "fs": "latest",
     "googleapis": "latest"
   },
   "devDependencies": {

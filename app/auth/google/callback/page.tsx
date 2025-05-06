@@ -1,88 +1,44 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { handleGoogleCallback } from "@/app/actions/calendar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Check, X } from "lucide-react"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
-export default function GoogleCallbackPage() {
+export default function AuthCallbackPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
-  const [message, setMessage] = useState("Processing Google authentication...")
+  const supabase = createClientComponentClient()
 
   useEffect(() => {
-    const processCallback = async () => {
-      try {
-        const code = searchParams.get("code")
+    const handleAuthCallback = async () => {
+      const { searchParams } = new URL(window.location.href)
+      const code = searchParams.get("code")
 
-        if (!code) {
-          throw new Error("No authorization code received from Google")
+      if (code) {
+        try {
+          await supabase.auth.exchangeCodeForSession(code)
+          // Check if setup is complete
+          const { data: setupData } = await supabase.from("system_settings").select("is_setup_complete").single()
+
+          if (setupData?.is_setup_complete) {
+            router.push("/emr/dashboard")
+          } else {
+            router.push("/emr/setup")
+          }
+        } catch (error) {
+          console.error("Error exchanging code for session:", error)
+          router.push("/emr")
         }
-
-        const { success, error } = await handleGoogleCallback(code)
-
-        if (!success) {
-          throw new Error(error || "Failed to authenticate with Google")
-        }
-
-        setStatus("success")
-        setMessage("Successfully connected to Google Calendar! You can close this window.")
-
-        // Close window after 3 seconds
-        setTimeout(() => {
-          window.close()
-        }, 3000)
-      } catch (err: any) {
-        console.error("Google callback error:", err)
-        setStatus("error")
-        setMessage(err.message || "Failed to connect to Google Calendar")
       }
     }
 
-    processCallback()
-  }, [searchParams, router])
+    handleAuthCallback()
+  }, [router, supabase])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {status === "loading" && "Connecting to Google Calendar..."}
-            {status === "success" && (
-              <>
-                <Check className="h-5 w-5 text-green-500" />
-                Connection Successful
-              </>
-            )}
-            {status === "error" && (
-              <>
-                <X className="h-5 w-5 text-red-500" />
-                Connection Failed
-              </>
-            )}
-          </CardTitle>
-          <CardDescription>
-            {status === "loading" && "Please wait while we complete the connection process..."}
-            {status === "success" && "Your Google Calendar has been successfully connected."}
-            {status === "error" && "There was a problem connecting to Google Calendar."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div
-            className={`rounded-md p-4 text-sm ${
-              status === "loading"
-                ? "bg-blue-50 text-blue-800"
-                : status === "success"
-                  ? "bg-green-50 text-green-800"
-                  : "bg-red-50 text-red-800"
-            }`}
-          >
-            {message}
-          </div>
-        </CardContent>
-      </Card>
+    <div className="flex min-h-screen flex-col items-center justify-center">
+      <div className="mb-4 h-12 w-12 animate-spin rounded-full border-t-2 border-b-2 border-purple-500"></div>
+      <h2 className="text-xl font-semibold">Authenticating...</h2>
+      <p className="text-gray-500">Please wait while we complete the authentication process.</p>
     </div>
   )
 }

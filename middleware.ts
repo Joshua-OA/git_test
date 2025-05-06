@@ -1,48 +1,60 @@
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
 
-  // Check if the request is for the setup page
-  const isSetupPage = req.nextUrl.pathname === "/setup"
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  // Check if setup has been completed
-  const { data: clinicData, error: clinicError } = await supabase.from("clinic_settings").select("id").limit(1)
+  // Get the pathname from the URL
+  const path = req.nextUrl.pathname
 
-  const setupCompleted = clinicData && clinicData.length > 0
+  // No need to adjust for basePath anymore since we're using a subdomain
 
-  // If setup is not completed and user is not on setup page, redirect to setup
-  if (
-    !setupCompleted &&
-    !isSetupPage &&
-    !req.nextUrl.pathname.startsWith("/_next") &&
-    !req.nextUrl.pathname.startsWith("/api")
-  ) {
-    const setupUrl = req.nextUrl.clone()
-    setupUrl.pathname = "/setup"
-    return NextResponse.redirect(setupUrl)
-  }
+  // Check if the user is authenticated
+  if (!session) {
+    // If the user is not authenticated and trying to access a protected route
+    if (path.startsWith("/dashboard") || path === "/setup" || path.startsWith("/auth/google/callback")) {
+      // Allow access to the Google callback route
+      if (path.startsWith("/auth/google/callback")) {
+        return res
+      }
 
-  // If setup is completed and user is on setup page, redirect to dashboard
-  if (setupCompleted && isSetupPage) {
-    const dashboardUrl = req.nextUrl.clone()
-    dashboardUrl.pathname = "/"
-    return NextResponse.redirect(dashboardUrl)
-  }
-
-  // Check authentication for protected routes
-  if (req.nextUrl.pathname.startsWith("/dashboard")) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    // If there's no session and the user is trying to access a protected route
-    if (!session) {
+      // Redirect to the login page
       const redirectUrl = req.nextUrl.clone()
       redirectUrl.pathname = "/"
+      redirectUrl.search = ""
+
+      return NextResponse.redirect(redirectUrl)
+    }
+  } else {
+    // Check if the system is set up
+    const { data: setupData } = await supabase.from("system_settings").select("is_setup_complete").single()
+
+    const isSetupComplete = setupData?.is_setup_complete
+
+    // If the system is not set up and the user is not on the setup page
+    if (!isSetupComplete && path !== "/setup" && !path.startsWith("/auth/google/callback")) {
+      const redirectUrl = req.nextUrl.clone()
+      redirectUrl.pathname = "/setup"
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // If the system is set up and the user is on the setup page
+    if (isSetupComplete && path === "/setup") {
+      const redirectUrl = req.nextUrl.clone()
+      redirectUrl.pathname = "/dashboard"
+      return NextResponse.redirect(redirectUrl)
+    }
+
+    // If the user is authenticated and on the login page, redirect to dashboard
+    if (path === "/") {
+      const redirectUrl = req.nextUrl.clone()
+      redirectUrl.pathname = "/dashboard"
       return NextResponse.redirect(redirectUrl)
     }
   }
@@ -51,8 +63,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    // Match all routes except for static files, api routes
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/dashboard/:path*", "/setup", "/", "/auth/google/callback"],
 }
