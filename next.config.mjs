@@ -25,6 +25,10 @@ const nextConfig = {
     ],
     unoptimized: true,
   },
+  // Add experimental features if needed
+  experimental: {
+    serverActions: true,
+  }
 };
 
 export default nextConfig;
